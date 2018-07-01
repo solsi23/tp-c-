@@ -1,0 +1,58 @@
+using Nancy;
+using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using Nancy.TinyIoc;
+using Nancy.Security;
+using System.Globalization;
+using Nancy.ModelBinding;
+using Newtonsoft.Json;
+using EjemploDeModelo;
+using First.Data;
+
+namespace Get.Propiedades.Servicios
+{
+    public class AutenticacionModule : NancyModule
+    {
+        private SqlServerConnection conn = new SqlServerConnection();
+        public AutenticacionModule()
+        {
+            Get["/servicio/validarusuario/{username}/{password}"] = parameters =>
+            {
+                var usuid = (int?)conn.GetValue("sp_validarusuario", new List<SqlParameter> {
+                    new SqlParameter{ ParameterName = "@username", Value = (string)parameters.username },
+                    new SqlParameter{  ParameterName = "@password", Value = (string)parameters.password },
+                });
+                if (usuid.HasValue)
+                {
+                    var token = "";
+                    conn.Execute("sp_validarusuario", new List<SqlParameter> {
+                        new SqlParameter{ ParameterName = "@usuid", Value = usuid.Value },
+                        new SqlParameter{  ParameterName = "@token", Value = token },
+                        new SqlParameter{  ParameterName = "@fechavigencia", Value = DateTime.Now.AddDays(1) },
+                    });
+                    var usuario = conn.GetObject<UsuarioEntity>(usuid.Value);
+                    return Response.AsJson(new { Result = true, Usuario = usuario, Token = token });
+                }
+                else return Response.AsJson(new { Result = false });
+            };
+            Post["/servicio/registrarusuario"] = parameters =>
+            {
+                var obj = GetObject<UsuarioEntity>();
+
+                conn.SaveObject(obj);
+                return Response.AsJson(new { Result = true });
+
+            };
+
+        }
+        private T GetObject<T>() {
+            var body = Request.Body;
+            int length = (int)body.Length; // this is a dynamic variable
+            byte[] data = new byte[length];
+            body.Read(data, 0, length);
+            var y = System.Text.Encoding.UTF8.GetString(data);
+            return JsonConvert.DeserializeObject<T>(y);
+        }
+    }
+}
